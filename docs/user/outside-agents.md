@@ -94,6 +94,17 @@ Any agent that supports remote MCP servers over HTTP with OAuth can connect. Giv
 it the MCP URL and choose OAuth, and the agent finds the sign-in settings itself.
 Agents without OAuth support cannot connect.
 
+## Read provider plan limits
+
+Agents can call `t3_usage_limits` to read cached plan allowances for every provider
+instance in the connected environment, or pass `providerInstanceId` for one account.
+It reports used percentages, reset times and whether an observed limit was hit.
+Read-only MCP access is sufficient; agents inside T3 receive the tool automatically.
+
+Check `checkedAt` and `status` before planning work. Readings older than five minutes,
+expired windows and unavailable probes are unknown. `nearLimit` starts at 90% used.
+This read uses the same snapshots as T3's limits view and never refreshes a CLI login.
+
 ## Scripts on the host
 
 On the machine that runs the environment, `t3 thread` uses the same tools
