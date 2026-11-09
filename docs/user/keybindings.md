@@ -199,4 +199,7 @@ keyboard repeat; if repeat is disabled, use two presses or the application menu.
 
 Change **Settings → General → Confirmations → Quit shortcut** to **Direct** for a
 single press or **Double press** for two presses only. Choosing **Quit** from the
-application menu always quits immediately.
+application menu skips the shortcut gesture. Closing on Windows/Linux or quitting
+asks for confirmation while desktop-hosted agent turns are active. Choose **Quit
+anyway** to stop them. Disable or re-enable this prompt in **Settings → General →
+Confirmations → Confirm quit while agents are running**.

@@ -807,6 +807,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["ask before thread chat history"],
   },
   {
+    id: "quit-while-running-confirmation",
+    title: "Confirm quit while agents are running",
+    to: "/settings/general",
+    searchTerms: ["close active turns exit don't ask again"],
+    desktopOnly: true,
+  },
+  {
     id: "quit-confirmation",
     title: "Quit shortcut",
     to: "/settings/general",

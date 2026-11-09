@@ -83,6 +83,8 @@ const layerDesktopWindow = (selectedAction: Deferred.Deferred<string>) =>
     showConnectingSplash: Effect.void,
     handleBackendReady: () => Effect.void,
     handleBackendNotReady: Effect.void,
+    confirmExit: Effect.succeed(true),
+    setRunningThreadCount: () => Effect.void,
     flushMainWindowBounds: Effect.void,
     prepareCaptureReveal: Effect.void,
     dispatchMenuAction: (action) => Deferred.succeed(selectedAction, action).pipe(Effect.asVoid),
