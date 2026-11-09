@@ -36,6 +36,8 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
+import { QuitGuard } from "./QuitGuard.ts";
+import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
 
@@ -85,6 +87,7 @@ type DesktopWindowRuntimeServices =
   | DesktopAssets.DesktopAssets
   | DesktopAppSettings.DesktopAppSettings
   | DesktopClientSettings.DesktopClientSettings
+  | ElectronDialog.ElectronDialog
   | ElectronApp.ElectronApp
   | ElectronMenu.ElectronMenu
   | ElectronShell.ElectronShell
@@ -103,6 +106,8 @@ export type MainWindowContentsCommand = "reload" | "forceReload" | "toggleDevToo
 export class DesktopWindow extends Context.Service<
   DesktopWindow,
   {
+    readonly confirmExit: Effect.Effect<boolean>;
+    readonly setRunningThreadCount: (count: number) => Effect.Effect<void>;
     readonly createMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
     readonly ensureMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
     readonly revealOrCreateMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
@@ -316,6 +321,8 @@ export const make = Effect.gen(function* () {
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronApp = yield* ElectronApp.ElectronApp;
   const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
+  const dialog = yield* ElectronDialog.ElectronDialog;
+  const quitGuard = new QuitGuard();
   const backendReadyRef = yield* Ref.make(false);
   let backendHasStarted = false;
   let mainClosedDuringStartup = false;
@@ -324,6 +331,46 @@ export const make = Effect.gen(function* () {
   const runFork = Effect.runForkWith(context);
   const runPromise = Effect.runPromiseWith(context);
   const mainWindowMutex = yield* Semaphore.make(1);
+  const confirmExit = Effect.fn("desktop.window.confirmExit")(function* () {
+    return yield* Effect.promise(() =>
+      quitGuard.confirm((count) =>
+        runPromise(
+          Effect.gen(function* () {
+            const settings = Option.getOrElse(
+              yield* clientSettings.get,
+              () => DEFAULT_CLIENT_SETTINGS,
+            );
+            if (!settings.confirmQuitWhileRunning) return true;
+            const owner = yield* electronWindow.main;
+            const result = yield* dialog.showMessageBox(
+              {
+                type: "warning",
+                title: "Quit T3 Code?",
+                message: `${count} ${count === 1 ? "thread has" : "threads have"} an active turn.`,
+                detail: "Quitting will stop agent work hosted by this desktop app.",
+                buttons: ["Cancel", "Quit anyway"],
+                defaultId: 0,
+                cancelId: 0,
+                checkboxLabel: "Don't ask again",
+                checkboxChecked: false,
+                noLink: true,
+              },
+              Option.getOrUndefined(owner),
+            );
+            if (result.response !== 1) return false;
+            if (result.checkboxChecked) {
+              yield* clientSettings.set({ ...settings, confirmQuitWhileRunning: false });
+            }
+            return true;
+          }).pipe(
+            Effect.catchCause((cause) =>
+              logWindowWarning("quit confirmation failed", { cause }).pipe(Effect.as(false)),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
   const pendingMainReveals = new WeakMap<Electron.BrowserWindow, Effect.Effect<void>>();
   const revealMain = Effect.fn("desktop.window.revealMain")((window: Electron.BrowserWindow) =>
     Effect.suspend(() => pendingMainReveals.get(window) ?? electronWindow.reveal(window)),
@@ -665,7 +712,9 @@ export const make = Effect.gen(function* () {
         }
       },
       // Hold focus until shortcut release so remaining repeats cannot reach the next app.
-      concealWindow: () => concealPendingQuitWindow(window),
+      concealWindow: () => {
+        if (quitGuard.canExit) concealPendingQuitWindow(window);
+      },
       quit: () => {
         void runPromise(electronApp.quit);
       },
@@ -700,7 +749,14 @@ export const make = Effect.gen(function* () {
     window.on("move", scheduleBoundsPersist);
     window.on("maximize", scheduleBoundsPersist);
     window.on("unmaximize", scheduleBoundsPersist);
-    window.on("close", () => {
+    window.on("close", (event) => {
+      if (environment.platform !== "darwin" && !quitGuard.canExit) {
+        event.preventDefault();
+        void runPromise(confirmExit()).then((confirmed) => {
+          if (confirmed) void runPromise(electronApp.quit);
+        });
+        return;
+      }
       runFork(flushBoundsPersist);
     });
 
@@ -999,6 +1055,12 @@ export const make = Effect.gen(function* () {
   });
 
   return DesktopWindow.of({
+    confirmExit: confirmExit(),
+    setRunningThreadCount: Effect.fn("desktop.window.setRunningThreadCount")((count) =>
+      Effect.sync(() => {
+        quitGuard.count = count;
+      }),
+    ),
     createMain: createMain.pipe(Effect.flatMap(requireWindow)),
     ensureMain: ensureMain.pipe(Effect.flatMap(requireWindow)),
     revealOrCreateMain,

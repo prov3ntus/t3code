@@ -86,6 +86,7 @@ function layerElectronWindow(destroyAll: Effect.Effect<void> = Effect.void) {
 function layerDesktopWindow(
   input: {
     readonly activate?: Effect.Effect<void>;
+    readonly confirmExit?: Effect.Effect<boolean>;
     readonly flushMainWindowBounds?: Effect.Effect<void>;
   } = {},
 ) {
@@ -98,6 +99,8 @@ function layerDesktopWindow(
     showConnectingSplash: Effect.void,
     handleBackendReady: () => Effect.void,
     handleBackendNotReady: Effect.void,
+    confirmExit: input.confirmExit ?? Effect.succeed(true),
+    setRunningThreadCount: () => Effect.void,
     flushMainWindowBounds: input.flushMainWindowBounds ?? Effect.void,
     prepareCaptureReveal: Effect.void,
     dispatchMenuAction: () => Effect.void,
@@ -171,6 +174,7 @@ describe("DesktopLifecycle", () => {
       const allowShutdown = yield* Deferred.make<void>();
       const quitRequested = yield* Deferred.make<void>();
       const events: string[] = [];
+      const allowExit = yield* Deferred.make<boolean>();
 
       const quit = Effect.sync(() => {
         events.push("quit");
@@ -201,7 +205,9 @@ describe("DesktopLifecycle", () => {
         Layer.provideMerge(layerElectronApp(appListeners, quit)),
         Layer.provideMerge(layerElectronTheme),
         Layer.provideMerge(layerElectronWindow(destroyAll)),
-        Layer.provideMerge(layerDesktopWindow({ flushMainWindowBounds })),
+        Layer.provideMerge(
+          layerDesktopWindow({ flushMainWindowBounds, confirmExit: Deferred.await(allowExit) }),
+        ),
         Layer.provideMerge(layerEnvironment),
         Layer.provideMerge(layerDesktopShutdown),
         Layer.provideMerge(DesktopState.layer),
@@ -215,6 +221,9 @@ describe("DesktopLifecycle", () => {
           const event = { preventDefault: () => undefined } as Electron.Event;
           appListeners.get("before-quit")?.(event);
 
+          appListeners.get("before-quit")?.(event);
+          assert.deepEqual(events, []);
+          yield* Deferred.succeed(allowExit, true);
           yield* Deferred.await(shutdownRequested);
           const eventsBeforeCleanup = [...events];
           yield* Deferred.succeed(allowShutdown, undefined);

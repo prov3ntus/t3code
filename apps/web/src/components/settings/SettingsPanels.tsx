@@ -566,6 +566,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Delete confirmation"]
       : []),
     ...(settings.confirmQuit !== DEFAULT_UNIFIED_SETTINGS.confirmQuit ? ["Quit shortcut"] : []),
+    ...(!settings.confirmQuitWhileRunning ? ["Confirm quit while agents are running"] : []),
     ...(isTextGenerationModelDirty ? ["Text generation model"] : []),
     ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
       ? ["Thread title instructions"]
@@ -674,6 +675,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
       confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
+      confirmQuitWhileRunning: DEFAULT_UNIFIED_SETTINGS.confirmQuitWhileRunning,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
       threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
       fontFamilySans: DEFAULT_UNIFIED_SETTINGS.fontFamilySans,
@@ -951,6 +953,21 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        {isElectron ? (
+          <SettingsRow
+            {...searchableSetting("quit-while-running-confirmation")}
+            description="Ask before quitting when this desktop app hosts active agent turns."
+            control={
+              <Switch
+                checked={settings.confirmQuitWhileRunning}
+                onCheckedChange={(checked) =>
+                  updateSettings({ confirmQuitWhileRunning: Boolean(checked) })
+                }
+                aria-label="Confirm quit while agents are running"
+              />
+            }
+          />
+        ) : null}
         {isElectron ? (
           <SettingsRow
             {...searchableSetting("quit-confirmation")}

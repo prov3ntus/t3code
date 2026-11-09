@@ -100,7 +100,7 @@ const requestDesktopShutdownAndWait = Effect.fn("desktop.lifecycle.requestShutdo
 );
 
 interface QuitState {
-  phase: "running" | "waiting" | "allowed";
+  phase: "running" | "confirming" | "waiting" | "allowed";
   waitingSinceNanos: bigint;
 }
 
@@ -154,14 +154,21 @@ function handleBeforeQuit(
   }
 
   event.preventDefault();
+  if (quit.phase === "confirming") return;
   if (quit.phase === "waiting") {
     void runEffect(exitIfShutdownStalled(quit, "before-quit"));
     return;
   }
+  quit.phase = "confirming";
   void runEffect(
     Effect.gen(function* () {
       const state = yield* DesktopState.DesktopState;
       const electronWindow = yield* ElectronWindow.ElectronWindow;
+      const desktopWindow = yield* DesktopWindow.DesktopWindow;
+      if (!(yield* desktopWindow.confirmExit)) {
+        quit.phase = "running";
+        return;
+      }
       yield* startWaitingForShutdown(quit);
       yield* Ref.set(state.quitting, true);
       yield* logLifecycleInfo("before-quit received");
@@ -174,6 +181,7 @@ function handleBeforeQuit(
       );
     }).pipe(Effect.withSpan("desktop.lifecycle.beforeQuit")),
   ).finally(() => {
+    if (quit.phase !== "waiting") return;
     quit.phase = "allowed";
     void runEffect(
       Effect.gen(function* () {

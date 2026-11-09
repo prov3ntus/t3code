@@ -39,6 +39,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
+import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
@@ -230,6 +231,7 @@ function layerTest(input: {
   readonly setPreviewMainWindow?: (window: Electron.BrowserWindow) => Effect.Effect<void>;
   readonly destroyAll?: Effect.Effect<void>;
   readonly onWindowCreate?: Effect.Effect<void>;
+  readonly showMessageBox?: ElectronDialog.ElectronDialog["Service"]["showMessageBox"];
   readonly openedExternalUrls?: unknown[];
   readonly copiedTexts?: string[];
   readonly onPopupTemplate?: (input: ElectronMenu.ElectronMenuTemplateInput) => Effect.Effect<void>;
@@ -299,6 +301,9 @@ function layerTest(input: {
   return DesktopWindow.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.mock(ElectronDialog.ElectronDialog)(
+          input.showMessageBox ? { showMessageBox: input.showMessageBox } : {},
+        ),
         layerDesktopAssets,
         Layer.succeed(DesktopRendererHistory.DesktopRendererHistory, {
           register: () => Effect.void,
@@ -420,6 +425,7 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
     const layer = DesktopWindow.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          Layer.mock(ElectronDialog.ElectronDialog)({}),
           layerDesktopAssets,
           Layer.succeed(DesktopRendererHistory.DesktopRendererHistory, {
             register: () => Effect.void,
@@ -898,6 +904,37 @@ describe("DesktopWindow", () => {
             Layer.mergeAll(layer, Logger.layer([logger], { mergeWithExisting: false })),
           ),
         );
+      }),
+  );
+
+  it.effect(
+    "keeps active work open on Cancel and allows the confirmed quit without asking twice",
+    () =>
+      Effect.gen(function* () {
+        const fakeWindow = makeFakeBrowserWindow();
+        const createCount = yield* Ref.make(0);
+        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+        let prompts = 0;
+        const layer = layerTest({
+          window: fakeWindow.window,
+          createCount,
+          mainWindow,
+          showMessageBox: (options) =>
+            Effect.sync(() => {
+              assert.equal(options.message, "2 threads have an active turn.");
+              prompts++;
+              return { response: prompts === 1 ? 0 : 1, checkboxChecked: false };
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          assert.isTrue(yield* desktopWindow.confirmExit);
+          yield* desktopWindow.setRunningThreadCount(2);
+          assert.isFalse(yield* desktopWindow.confirmExit);
+          assert.isTrue(yield* desktopWindow.confirmExit);
+          assert.isTrue(yield* desktopWindow.confirmExit);
+          assert.equal(prompts, 2);
+        }).pipe(Effect.provide(layer));
       }),
   );
 

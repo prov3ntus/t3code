@@ -32,6 +32,7 @@ import * as DesktopManagedPolicy from "../../app/DesktopManagedPolicy.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import * as DesktopWslBackend from "../../wsl/DesktopWslBackend.ts";
 import * as DesktopWslEnvironment from "../../wsl/DesktopWslEnvironment.ts";
+import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as ElectronApp from "../../electron/ElectronApp.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../../electron/ElectronMenu.ts";
@@ -64,6 +65,16 @@ function toWebSocketBaseUrl(httpBaseUrl: URL): string {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
 }
+
+export const setRunningThreadCount = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SET_RUNNING_THREAD_COUNT_CHANNEL,
+  payload: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.setRunningThreadCount")(function* (count) {
+    const window = yield* DesktopWindow.DesktopWindow;
+    yield* window.setRunningThreadCount(count);
+  }),
+});
 
 export const getAppBranding = DesktopIpc.makeSyncIpcMethod({
   channel: IpcChannels.GET_APP_BRANDING_CHANNEL,

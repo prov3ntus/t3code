@@ -1,3 +1,4 @@
+import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { createChildThreadApprovalsAtom } from "@t3tools/client-runtime/state/thread-requests";
 import { useAtomValue } from "@effect/atom-react";
 import { enabledEnvironmentIds } from "@t3tools/client-runtime/state/connections";
@@ -130,4 +131,18 @@ export const runningThreadKeepAliveAtom = createRunningThreadKeepAliveAtom({
   ]),
   threadsAtom: environmentThreadShells.environmentThreadsAtom,
   stateAtom: environmentThreads.stateAtom,
+});
+
+export const desktopRunningThreadCountAtom = Atom.make((get) => {
+  if (!window.desktopBridge) return 0;
+  let count = 0;
+  for (const [environmentId, entry] of get(environmentCatalog.catalogValueAtom).entries) {
+    const target = entry.target;
+    if (target._tag !== "PrimaryConnectionTarget" && !isDesktopLocalConnectionTarget(target))
+      continue;
+    for (const thread of get(environmentThreadShells.environmentThreadsAtom(environmentId))) {
+      if (isRunning(thread.status) || thread.status === "waiting") count++;
+    }
+  }
+  return count;
 });
