@@ -7,6 +7,7 @@ export interface T3McpToolPresentation {
 
 export type T3McpToolSummaryAction =
   | "capabilities"
+  | "usage-limits"
   | "delegate"
   | "task-status"
   | "task-cancel"
@@ -96,6 +97,7 @@ const T3_MCP_SERVER_ALIASES = new Set([
 ]);
 
 const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
+  t3_usage_limits: tool(["Read", "Reading", "Read", "provider usage limits"], "usage-limits"),
   link_pull_request: tool(
     ["Link", "Linking", "Linked", "a pull request"],
     "link-pr",

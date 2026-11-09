@@ -110,6 +110,40 @@ const client = McpSchema.McpServerClient.of({
   getClient: Effect.die("unused"),
 });
 
+it.effect("usage limits are available to read-only clients and require orchestration scope", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const clientScope: McpInvocationContext.McpInvocationScope = {
+      ...scope,
+      thread: undefined,
+      client: { sessionId: "usage-reader", label: "Usage reader", access: "read-only" },
+    };
+    const call = (invocation: McpInvocationContext.McpInvocationScope) =>
+      server
+        .callTool({ name: "t3_usage_limits", arguments: {} })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+    const result = yield* call(clientScope);
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({ providers: [] });
+    const denied = yield* call({ ...clientScope, capabilities: new Set() });
+    expect(declaredFailure(denied)).toMatchObject({ code: "capability_denied" });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerUsageToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+        Layer.provide(
+          Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        ),
+      ),
+    ),
+  ),
+);
+
 it.effect("checks capability through the production registration", () =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
